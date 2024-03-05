@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: grpcdemo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: greeter-server
+  namespace: grpcdemo
+spec:
+  selector:
+    matchLabels:
+      app: greeter-server
+  replicas: 4
+  template:
+    metadata:
+      labels:
+        app: greeter-server
+    spec:
+      containers:
+      - name: greeter-server
+        ports:
+        - protocol: TCP
+          containerPort: 50051
+        image: docker.io/ikovnatsky/load-balance-grpc-k8s:latest
+        imagePullPolicy: Always
+        command:
+          - python
+          - greeter_server.py
+        env:
+        - name: GRPC_VERBOSITY
+          value: DEBUG
+        - name: GRPC_TRACE
+          value: http
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 50m
+            memory: 100Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: greeter-server
+  namespace: grpcdemo
+spec:
+  selector:
+    app: greeter-server
+  ports:
+  - port: 50051
+    name: greeter-server
+    protocol: TCP
+    targetPort: 50051
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: greeter-client
+  namespace: grpcdemo
+spec:
+  selector:
+    matchLabels:
+      app: greeter-client
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: greeter-client
+    spec:
+      containers:
+      - name: greeter-client
+        image: docker.io/ikovnatsky/load-balance-grpc-k8s:latest
+        imagePullPolicy: Always
+        command:
+          - /bin/sh
+          - -c
+          - 'sleep infinity'
+        resources:
+          limits:
+            cpu: 750m
+            memory: 1.5Gi
+          requests:
+            cpu: 50m
+            memory: 100Mi
+---
+apiVersion: getambassador.io/v2
+kind: Mapping
+metadata:
+  name: greeter-server
+  namespace: grpcdemo
+spec:
+  host: greeter.[redacted].com
+  grpc: true
+  prefix: /
+  service: http://greeter-server:50051
